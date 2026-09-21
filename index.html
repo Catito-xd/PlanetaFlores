@@ -571,7 +571,7 @@
 
         // Distancia más alejada para que el universo respire (antes 28/38, ahora 34/44)
         function setMainView(duration = 2.5) {
-            const targetDist = isMobile ? 44 : 50; 
+            const targetDist = isMobile ? 44 : 46; 
             
             const currentDir = camera.position.clone().normalize();
             currentDir.y = Math.max(currentDir.y, 0.3);
