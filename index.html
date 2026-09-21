@@ -639,7 +639,7 @@
             flower.userData.flowerHead.getWorldPosition(flowerWorldPos);
             
             const normal = flowerWorldPos.clone().normalize();
-            const camOffset = isMobile ? 13 : 9;
+            const camOffset = isMobile ? 13 : 7;
             
             const camPos = flowerWorldPos.clone().add(normal.multiplyScalar(camOffset));
             
