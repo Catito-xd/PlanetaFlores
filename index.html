@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pequeño Universo - 21 de Septiembre</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #010205;
+            font-family: 'Montserrat', sans-serif;
+            touch-action: none; user-select: none; -webkit-user-select: none;
+        }
+
+        #webgl-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+        .ui-layer {
+            position: absolute; inset: 0; z-index: 10;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            pointer-events: none;
+        }
+
+        .pointer-auto { pointer-events: auto; }
+
+        .glass-panel {
+            background: rgba(8, 12, 18, 0.65);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.9), inset 0 0 25px rgba(255, 200, 0, 0.05);
+        }
+
+        .font-cinzel { font-family: 'Cinzel', serif; }
+
+        .btn-glow {
+            background: rgba(255, 215, 0, 0.08);
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            color: #FFD700; text-transform: uppercase; letter-spacing: 2px;
+            transition: all 0.4s ease; position: relative; overflow: hidden;
+        }
+        .btn-glow::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.2), transparent);
+            transition: all 0.6s ease;
+        }
+        .btn-glow:hover::before { left: 100%; }
+        .btn-glow:hover {
+            background: rgba(255, 215, 0, 0.2); box-shadow: 0 0 25px rgba(255, 215, 0, 0.3); transform: scale(1.03);
+        }
+
+        @keyframes pulse-text {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.02); }
+        }
+        .animate-pulse-slow { animation: pulse-text 4s infinite ease-in-out; }
+
+        .photo-container {
+            width: 100%; max-height: 40vh; display: none; justify-content: center; align-items: center; margin-bottom: 1.5rem; position: relative;
+        }
+        .photo-container img {
+            max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 215, 0, 0.15);
+            border: 1px solid rgba(255, 215, 0, 0.25);
+        }
+
+        @media (max-width: 768px) {
+            .glass-panel { padding: 1.5rem !important; width: 92%; }
+            #modal-title { font-size: 1.25rem; margin-bottom: 0.75rem; }
+            #modal-text { font-size: 0.9rem; margin-bottom: 1.2rem; }
+            .photo-container { max-height: 35vh; margin-bottom: 1rem; }
+            .btn-glow { padding: 0.75rem 1.5rem; font-size: 0.75rem; }
+        }
+    </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="webgl-container"></div>
+
+    <!-- Pantalla de Inicio -->
+    <div id="intro-screen" class="ui-layer pointer-auto bg-[#010103] transition-opacity duration-1000 z-50">
+        <div class="glass-panel p-8 md:p-14 rounded-3xl text-center max-w-lg mx-5 opacity-0 transform translate-y-10" id="intro-panel">
+            <h1 class="font-cinzel text-3xl md:text-4xl text-yellow-400 mb-6 drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">
+                Un Pequeño Mundo<br>Para Ti
+            </h1>
+            <p class="text-gray-300 mb-10 leading-relaxed text-sm md:text-base font-light">
+                He creado este pequeño universo flotante especialmente para el 21 de septiembre. Gira el planeta y descubre las flores mágicas que han crecido en él.
+            </p>
+            <button id="enter-btn" class="btn-glow py-4 px-10 rounded-full font-semibold text-sm">
+                Acercarse al Planeta
+            </button>
+        </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="ui-layer justify-end pb-8 md:pb-12 opacity-0 transition-opacity duration-1000">
+        <p class="text-yellow-200/70 text-[10px] md:text-xs font-light tracking-[0.2em] animate-pulse-slow text-center px-4 drop-shadow-md">
+            ✦ GIRA EL PLANETA • TOCA LAS FLORES ✦
+        </p>
+    </div>
+
+    <!-- Modal de Mensajes -->
+    <div id="message-modal" class="ui-layer opacity-0 transition-opacity duration-700 hidden">
+        <div class="glass-panel p-6 md:p-10 rounded-2xl text-center w-[92%] max-w-md mx-auto relative pointer-auto transform translate-y-12 transition-transform duration-700 flex flex-col items-center" id="modal-content">
+            <h2 class="font-cinzel text-xl md:text-2xl text-yellow-300 mb-4 drop-shadow-[0_0_8px_rgba(255,215,0,0.4)] border-b border-yellow-700/40 pb-3 w-full" id="modal-title">Título</h2>
+            
+            <div id="modal-photo-container" class="photo-container">
+                <img id="modal-photo" src="" alt="Recuerdo especial" />
+            </div>
+
+            <p class="text-gray-200 text-sm md:text-base leading-relaxed font-light mb-6 italic" id="modal-text">Mensaje...</p>
+
+            <button id="close-modal-btn" class="btn-glow py-3 px-8 rounded-full text-xs w-full md:w-auto">
+                Volver al Planeta
+            </button>
+        </div>
+    </div>
+
+    <audio id="bg-music" loop>
+        <source src="https://cdn.pixabay.com/download/audio/2022/02/10/audio_fc905e3f17.mp3?filename=ambient-piano-amp-strings-10711.mp3" type="audio/mpeg">
+    </audio>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- 1. SETUP BÁSICO ---
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x010205, 0.0025);
+
+        const isMobile = window.innerWidth <= 768;
+
+        const camera = new THREE.PerspectiveCamera(isMobile ? 55 : 45, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 30, 250);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.0 : 1.5));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enablePan = false;
+        controls.minDistance = isMobile ? 25 : 20;
+        controls.maxDistance = isMobile ? 60 : 50;
+        controls.enabled = false;
+
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.7, 0.5, 0.6);
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- 2. ILUMINACIÓN ---
+        const ambientLight = new THREE.AmbientLight(0x1a2536, 1.2);
+        scene.add(ambientLight);
+
+        const hemiLight = new THREE.HemisphereLight(0xffeedd, 0x051022, 0.4);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfff3e0, 1.0);
+        sunLight.position.set(30, 25, 20);
+        scene.add(sunLight);
+
+        const rimLight = new THREE.DirectionalLight(0x4466aa, 0.7);
+        rimLight.position.set(-35, -15, -25);
+        scene.add(rimLight);
+
+        // --- 3. FONDO ESPACIAL ---
+        const backgroundGroup = new THREE.Group();
+        scene.add(backgroundGroup);
+
+        const starCount = isMobile ? 1200 : 2500;
+        const starsGeo = new THREE.BufferGeometry();
+        const starsPos = new Float32Array(starCount * 3);
+        for(let i=0; i<starCount; i++) {
+            starsPos[i*3] = (Math.random() - 0.5) * 800;
+            starsPos[i*3+1] = (Math.random() - 0.5) * 800;
+            starsPos[i*3+2] = (Math.random() - 0.5) * 800;
+        }
+        starsGeo.setAttribute('position', new THREE.BufferAttribute(starsPos, 3));
+        const starsMat = new THREE.PointsMaterial({ size: 1.2, color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false });
+        backgroundGroup.add(new THREE.Points(starsGeo, starsMat));
+
+        const galaxyGeo = new THREE.BufferGeometry();
+        const galaxyParticles = isMobile ? 1500 : 3000;
+        const galaxyPos = new Float32Array(galaxyParticles * 3);
+        const galaxyColors = new Float32Array(galaxyParticles * 3);
+        const colorInner = new THREE.Color(0xffaa55);
+        const colorOuter = new THREE.Color(0x331166);
+
+        for(let i=0; i<galaxyParticles; i++) {
+            const r = Math.random() * 150;
+            const branch = (i % 2) * Math.PI;
+            const spin = r * 0.03;
+            const angle = branch + spin + (Math.random() - 0.5);
+            galaxyPos[i*3] = Math.cos(angle) * r;
+            galaxyPos[i*3+1] = (Math.random() - 0.5) * (15 - (r/10));
+            galaxyPos[i*3+2] = Math.sin(angle) * r;
+            
+            const mixed = colorInner.clone().lerp(colorOuter, r/150);
+            galaxyColors[i*3] = mixed.r; galaxyColors[i*3+1] = mixed.g; galaxyColors[i*3+2] = mixed.b;
+        }
+        galaxyGeo.setAttribute('position', new THREE.BufferAttribute(galaxyPos, 3));
+        galaxyGeo.setAttribute('color', new THREE.BufferAttribute(galaxyColors, 3));
+        const galaxyMat = new THREE.PointsMaterial({ size: 2.5, vertexColors: true, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+        const galaxy = new THREE.Points(galaxyGeo, galaxyMat);
+        galaxy.position.set(-80, 50, -250);
+        galaxy.rotation.x = Math.PI / 3;
+        backgroundGroup.add(galaxy);
+
+        const farPlanetGroup = new THREE.Group();
+        farPlanetGroup.position.set(120, 60, -200);
+        const fpMesh = new THREE.Mesh(new THREE.SphereGeometry(8, 32), new THREE.MeshStandardMaterial({color: 0x884422, roughness: 0.9}));
+        const ringMesh = new THREE.Mesh(new THREE.RingGeometry(12, 18, 32), new THREE.MeshBasicMaterial({color: 0xffcc88, side: THREE.DoubleSide, transparent: true, opacity: 0.25}));
+        ringMesh.rotation.x = Math.PI/2.2;
+        farPlanetGroup.add(fpMesh, ringMesh);
+        backgroundGroup.add(farPlanetGroup);
+
+        // --- 4. PLANETA PRINCIPAL Y LUNA ---
+        const planetGroup = new THREE.Group();
+        scene.add(planetGroup);
+
+        const planetRadius = 10;
+        const planetGeo = new THREE.IcosahedronGeometry(planetRadius, isMobile ? 32 : 48); 
+        const positions = planetGeo.attributes.position;
+        const colors = [];
+        const planetColor = new THREE.Color();
+
+        function simpleNoise(x, y, z) {
+            return Math.sin(x * 0.45) * Math.cos(y * 0.45) * Math.sin(z * 0.45);
+        }
+
+        for (let i = 0; i < positions.count; i++) {
+            const vx = positions.getX(i); const vy = positions.getY(i); const vz = positions.getZ(i);
+            const noise = simpleNoise(vx, vy, vz);
+            let height = 0;
+            
+            if (noise > 0.08) {
+                height = noise * 0.7; 
+                planetColor.setHex(0x2d4c1e); 
+                if(height > 0.45) planetColor.setHex(0x5a5c48); 
+            } else {
+                height = 0; 
+                planetColor.setHex(0x184260); 
+            }
+
+            const v = new THREE.Vector3(vx, vy, vz).normalize().multiplyScalar(planetRadius + height);
+            positions.setXYZ(i, v.x, v.y, v.z);
+            colors.push(planetColor.r, planetColor.g, planetColor.b);
+        }
+
+        planetGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        planetGeo.computeVertexNormals(); 
+
+        const planetMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.1 });
+        const planetMesh = new THREE.Mesh(planetGeo, planetMat);
+        planetGroup.add(planetMesh);
+
+        // Atmósfera más fina y transparente
+        const atmosGeo = new THREE.SphereGeometry(planetRadius * 1.08, 64, 64);
+        const atmosMat = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader: `
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                void main() {
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vNormal = normalize(normalMatrix * normal);
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                void main() {
+                    vec3 normal = normalize(vNormal);
+                    vec3 viewDir = normalize(vViewPosition);
+                    float fresnel = clamp(1.0 - dot(normal, viewDir), 0.0, 1.0);
+                    float intensity = pow(fresnel, 5.0); // Más concentrado en el borde
+                    gl_FragColor = vec4(0.25, 0.65, 1.0, intensity * 0.4); // Menos opaco
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.BackSide
+        });
+        const atmosphere = new THREE.Mesh(atmosGeo, atmosMat);
+        planetGroup.add(atmosphere);
+
+        // Luna mejorada y orgánica (pequeñas irregularidades)
+        const moonGroup = new THREE.Group();
+        const moonGeo = new THREE.IcosahedronGeometry(0.85, 6);
+        const moonPos = moonGeo.attributes.position;
+        for(let i=0; i<moonPos.count; i++) {
+            let vx = moonPos.getX(i), vy = moonPos.getY(i), vz = moonPos.getZ(i);
+            let n = simpleNoise(vx*4, vy*4, vz*4);
+            let v = new THREE.Vector3(vx, vy, vz).normalize().multiplyScalar(0.85 + n*0.05); // Deformación sutil
+            moonPos.setXYZ(i, v.x, v.y, v.z);
+        }
+        moonGeo.computeVertexNormals();
+        const moonMesh = new THREE.Mesh(moonGeo, new THREE.MeshStandardMaterial({
+            color: 0xebebd3, roughness: 0.9, metalness: 0.1
+        }));
+        moonMesh.position.set(18, 5, 0);
+        moonGroup.add(moonMesh);
+        planetGroup.add(moonGroup);
+
+        // --- 5. DETALLES ORGÁNICOS DEL PLANETA (Naturaleza Sutil) ---
+        const decorGroup = new THREE.Group();
+        planetGroup.add(decorGroup);
+        
+        const rockGeo = new THREE.IcosahedronGeometry(0.12, 1);
+        const rockMat = new THREE.MeshStandardMaterial({color: 0x4a4a40, roughness: 1.0});
+        const sproutGeo = new THREE.ConeGeometry(0.06, 0.3, 4);
+        sproutGeo.translate(0, 0.15, 0); // Origen en la base
+        const sproutMat = new THREE.MeshStandardMaterial({color: 0x4a6b2f, roughness: 0.9});
+
+        const decorCount = isMobile ? 45 : 100;
+        let placedDecor = 0;
+        let attempts = 0;
+
+        while(placedDecor < decorCount && attempts < 200) {
+            const phi = Math.random() * Math.PI;
+            const theta = Math.random() * Math.PI * 2;
+            let pos = new THREE.Vector3().setFromSphericalCoords(planetRadius, phi, theta);
+            let elevation = getElevation(pos.x, pos.y, pos.z);
+            
+            if(elevation > 0.1) { // Solo en tierra firme
+                pos.normalize().multiplyScalar(planetRadius + elevation);
+                const isRock = Math.random() > 0.5;
+                const mesh = new THREE.Mesh(isRock ? rockGeo : sproutGeo, isRock ? rockMat : sproutMat);
+                alignToSurface(mesh, pos);
+                mesh.rotation.y = Math.random() * Math.PI; // Rotación sobre su eje vertical natural
+
+                if(!isRock && Math.random() > 0.5) { // Agrupar brotes a veces
+                    const extraSprout = new THREE.Mesh(sproutGeo, sproutMat);
+                    extraSprout.position.set(0.1, 0, 0.05);
+                    extraSprout.rotation.x = 0.2;
+                    mesh.add(extraSprout);
+                }
+                decorGroup.add(mesh);
+                placedDecor++;
+            }
+            attempts++;
+        }
+
+        // --- 6. CREACIÓN DE FLORES (PALETA AMARILLA Y ORIENTACIÓN CORREGIDA) ---
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x224a18, roughness: 0.9 });
+        
+        function createPetalGeo(width, length, curveStrength) {
+            const geo = new THREE.PlaneGeometry(width, length, 3, 4);
+            const pos = geo.attributes.position;
+            for(let i=0; i<pos.count; i++) {
+                const y = pos.getY(i);
+                const x = pos.getX(i);
+                const normalizedY = (y + length/2) / length; 
+                const taper = Math.sin(normalizedY * Math.PI * 0.8); 
+                let newX = x * (0.1 + 0.9 * taper);
+                const z = Math.pow(normalizedY, 2) * curveStrength;
+                pos.setX(i, newX);
+                pos.setZ(i, z);
+            }
+            geo.computeVertexNormals();
+            geo.translate(0, length/2, 0); // Origen en la base (apunta hacia +Y localmente)
+            return geo;
+        }
+
+        const sfPetalGeo = createPetalGeo(0.2, 0.9, 0.15);
+        const daisyPetalGeo = createPetalGeo(0.12, 0.7, 0.1);
+        const tulipPetalGeo = createPetalGeo(0.35, 0.8, -0.25); 
+        const wildPetalGeo = createPetalGeo(0.18, 0.6, 0.2);
+
+        function createFlower(type) {
+            const group = new THREE.Group();
+            
+            // El tallo apunta hacia +Y natural
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.2, 5), stemMat);
+            stem.position.y = 0.6; 
+            stem.rotation.set((Math.random() - 0.5) * 0.1, 0, (Math.random() - 0.5) * 0.1); // Inclinación suave
+            group.add(stem);
+
+            const flowerHead = new THREE.Group();
+            flowerHead.position.copy(stem.position);
+            flowerHead.position.y += 0.55; 
+            // Alineamos la cabeza con la ligera inclinación del tallo y luego añadimos una rotación orgánica.
+            // YXZ asegura que primero gire sobre el tallo y luego se incline.
+            flowerHead.rotation.set(0.1 + Math.random()*0.25, Math.random() * Math.PI * 2, 0, 'YXZ');
+
+            // --- PALETAS DE COLOR (Todas en espectro amarillo/dorado/cálido) ---
+            if (type === 'sunflower' || type === 'special') {
+                const centerMat = new THREE.MeshStandardMaterial({color: 0x2a1600, roughness: 0.9}); // Marrón muy cálido
+                const center = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.3, 0.1, 16), centerMat);
+                // El cilindro apunta a Y por defecto. No lo rotamos para que mire hacia afuera de la flor correctamente.
+                flowerHead.add(center);
+
+                const pMat = new THREE.MeshStandardMaterial({color: 0xFFC107, roughness: 0.6, side: THREE.DoubleSide}); // Amarillo Dorado
+                for(let layer=0; layer<2; layer++) {
+                    const numPetals = 16;
+                    for(let i=0; i<numPetals; i++) {
+                        const petal = new THREE.Mesh(sfPetalGeo, pMat);
+                        const angle = (i / numPetals) * Math.PI * 2 + (layer * 0.2);
+                        // YXZ: Rotar sobre Y (distribución radial), luego rotar X (inclinación/apertura)
+                        petal.rotation.set(1.35 - (layer * 0.15), angle, 0, 'YXZ');
+                        petal.scale.setScalar(0.9 + Math.random() * 0.2);
+                        flowerHead.add(petal);
+                    }
+                }
+                
+                if(type === 'special') {
+                    group.scale.setScalar(1.6);
+                    center.material = new THREE.MeshStandardMaterial({color: 0xFFB300, emissive: 0xFF9900, emissiveIntensity: 0.4});
+                } else {
+                    group.scale.setScalar(1.4);
+                }
+
+            } else if (type === 'daisy') {
+                const center = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), new THREE.MeshStandardMaterial({color: 0xFFB700, roughness: 0.8}));
+                center.scale.set(1, 0.5, 1); // Aplastado en el eje Y para que descanse plano
+                flowerHead.add(center);
+
+                const pMat = new THREE.MeshStandardMaterial({color: 0xFFF5CD, roughness: 0.5, side: THREE.DoubleSide}); // Crema cálido
+                for(let i=0; i<14; i++) {
+                    const petal = new THREE.Mesh(daisyPetalGeo, pMat);
+                    const angle = (i/14) * Math.PI * 2;
+                    petal.rotation.set(1.45 + (Math.random()*0.1-0.05), angle, 0, 'YXZ');
+                    petal.scale.setScalar(0.9 + Math.random()*0.2);
+                    flowerHead.add(petal);
+                }
+                group.scale.setScalar(1.5);
+
+            } else if (type === 'tulip') {
+                const pMat = new THREE.MeshStandardMaterial({color: 0xFFCA28, roughness: 0.4, side: THREE.DoubleSide}); // Amarillo anaranjado cálido
+                for(let i=0; i<6; i++) {
+                    const petal = new THREE.Mesh(tulipPetalGeo, pMat);
+                    const angle = (i/6) * Math.PI * 2;
+                    petal.rotation.set(0.25, angle, 0, 'YXZ'); // Casi cerrado
+                    petal.translateZ(0.08); // Empujar ligeramente hacia afuera desde el centro local
+                    flowerHead.add(petal);
+                }
+                flowerHead.rotation.x -= 0.15; // Tulipanes suelen mirar un poco más arriba
+                group.scale.setScalar(1.7);
+
+            } else if (type === 'wild') {
+                const center = new THREE.Mesh(new THREE.SphereGeometry(0.08), new THREE.MeshStandardMaterial({color: 0xFF6600})); // Detalle naranja
+                flowerHead.add(center);
+                const pMat = new THREE.MeshStandardMaterial({color: 0xFFD54F, roughness: 0.6, side: THREE.DoubleSide}); // Dorado vibrante
+                for(let i=0; i<5; i++) {
+                    const petal = new THREE.Mesh(wildPetalGeo, pMat);
+                    const angle = (i/5) * Math.PI * 2;
+                    petal.rotation.set(1.2, angle, 0, 'YXZ');
+                    petal.scale.setScalar(0.8 + Math.random()*0.4); 
+                    flowerHead.add(petal);
+                }
+                group.scale.setScalar(1.4);
+            }
+
+            group.add(flowerHead);
+            group.userData = { flowerHead: flowerHead, originalScale: group.scale.clone(), baseRot: group.rotation.clone() };
+            return group;
+        }
+
+        // Sistema de alineación (el eje +Y local siempre apuntará hacia afuera de la superficie)
+        function alignToSurface(mesh, position) {
+            mesh.position.copy(position);
+            const normal = position.clone().normalize();
+            const up = new THREE.Vector3(0, 1, 0);
+            mesh.quaternion.setFromUnitVectors(up, normal);
+            mesh.userData.baseRot = mesh.rotation.clone();
+        }
+
+        function getElevation(x, y, z) {
+            const noise = simpleNoise(x, y, z);
+            return noise > 0.08 ? noise * 0.7 : 0;
+        }
+
+        function findLandPosition(targetPhi, targetTheta) {
+            let phi = targetPhi;
+            let theta = targetTheta;
+            let maxTries = 30;
+            let pos = new THREE.Vector3();
+            while(maxTries > 0) {
+                pos.setFromSphericalCoords(planetRadius, phi, theta);
+                if (getElevation(pos.x, pos.y, pos.z) > 0) break;
+                theta += 0.3;
+                maxTries--;
+            }
+            const h = getElevation(pos.x, pos.y, pos.z);
+            pos.normalize().multiplyScalar(planetRadius + h); 
+            return pos;
+        }
+
+        // --- 7. FLORES INTERACTIVAS ---
+        const interactablesData = [
+            { type: 'photo', title: "Tu Sonrisa", text: "Me encanta verte sonreír. Iluminas todo mi mundo como este jardín.", img: "./WA_1780868659034.jpeg", fType: 'sunflower' },
+            { type: 'msg', title: "Un Recuerdo", text: "Recuerdo la primera vez que vi tus ojos. Supe de inmediato que quería perderme en ellos.", fType: 'tulip' },
+            { type: 'photo', title: "Tu Mirada", text: "Tus rizos y tu mirada tienen la magia perfecta para cautivarme cada día más.", img: "./36d52ce942bb4ccebfeb9ff0f0a624d9_0.jpeg", fType: 'daisy' },
+            { type: 'msg', title: "Una Promesa", text: "Te prometo cuidarte, escucharte y estar para ti incluso en los días donde no haya luz.", fType: 'wild' },
+            { type: 'photo', title: "Mi Favorita", text: "Eres simplemente perfecta. Eres mi flor amarilla, hoy y siempre.", img: "./8d7159612f0d6bc6f0abfa39a8f7756b_0.jpeg", fType: 'sunflower' },
+            { type: 'msg', title: "Un Deseo", text: "Deseo que cada 21 de septiembre sea una excusa para recordarte lo especial que eres.", fType: 'daisy' },
+            { type: 'msg', title: "Para Ti", text: "Las flores de este jardín no se marchitan, y mi amor por ti tampoco. Gracias por existir.", fType: 'tulip' },
+            { type: 'final', title: "Mi Pequeño Universo", text: "Entre todas las galaxias, siempre te elegiría a ti. ¡Feliz día de las flores amarillas, mi amor!", fType: 'special' }
+        ];
+
+        const interactables = [];
+        const phiStep = Math.PI / interactablesData.length;
+        
+        interactablesData.forEach((data, i) => {
+            const targetPhi = (i * phiStep) + 0.3; 
+            const targetTheta = (i * Math.PI * 2 / 3) + Math.random();
+            const pos = findLandPosition(targetPhi, targetTheta);
+
+            const flower = createFlower(data.fType);
+            alignToSurface(flower, pos);
+            
+            const light = new THREE.PointLight(0xffeebb, data.type === 'final' ? 0.8 : 0.2, 6);
+            light.position.y = 1;
+            flower.add(light);
+
+            flower.userData = { ...data, light: light, ...flower.userData };
+
+            const hitbox = new THREE.Mesh(new THREE.SphereGeometry(isMobile ? 2.5 : 1.8), new THREE.MeshBasicMaterial({visible: false}));
+            hitbox.position.y = 0.8;
+            flower.add(hitbox);
+            hitbox.userData = flower.userData;
+            hitbox.parentFlower = flower;
+
+            planetGroup.add(flower);
+            interactables.push(hitbox);
+        });
+
+        // Partículas
+        const particlesGeo = new THREE.BufferGeometry();
+        const pCount = isMobile ? 150 : 350;
+        const particlesPos = new Float32Array(pCount * 3);
+        for(let i=0; i<pCount; i++) {
+            const p = new THREE.Vector3().randomDirection().multiplyScalar(planetRadius + 1 + Math.random()*8);
+            particlesPos[i*3] = p.x; particlesPos[i*3+1] = p.y; particlesPos[i*3+2] = p.z;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(particlesPos, 3));
+        const particles = new THREE.Points(particlesGeo, new THREE.PointsMaterial({color: 0xffeebb, size: 0.12, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending}));
+        planetGroup.add(particles);
+
+        // --- 8. SISTEMA DE CÁMARA ROBUSTO ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let isPlanetRotating = false;
+        let isModalOpen = false;
+        let isAnimatingCamera = true;
+
+        // Distancia más alejada para que el universo respire (antes 28/38, ahora 34/44)
+        function setMainView(duration = 2.5) {
+            const targetDist = isMobile ? 44 : 34; 
+            
+            const currentDir = camera.position.clone().normalize();
+            currentDir.y = Math.max(currentDir.y, 0.3);
+            currentDir.normalize();
+
+            const newPos = currentDir.multiplyScalar(targetDist);
+
+            gsap.to(camera.position, { x: newPos.x, y: newPos.y, z: newPos.z, duration: duration, ease: "power2.inOut" });
+            gsap.to(controls.target, { 
+                x: 0, y: 0, z: 0, duration: duration, ease: "power2.inOut",
+                onComplete: () => {
+                    isAnimatingCamera = false;
+                    isPlanetRotating = true;
+                    controls.enabled = true;
+                }
+            });
+        }
+
+        // --- 9. INTERACCIÓN (MÓVIL Y DESKTOP) ---
+        let startPointer = {x: 0, y: 0};
+        window.addEventListener('pointerdown', (e) => {
+            startPointer.x = e.clientX || (e.touches && e.touches[0].clientX);
+            startPointer.y = e.clientY || (e.touches && e.touches[0].clientY);
+        });
+
+        window.addEventListener('pointerup', (event) => {
+            if (!controls.enabled || isAnimatingCamera || isModalOpen) return;
+
+            let clientX = event.clientX; let clientY = event.clientY;
+            if (event.changedTouches && event.changedTouches.length > 0) {
+                clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY;
+            }
+
+            const dist = Math.hypot(clientX - startPointer.x, clientY - startPointer.y);
+            if (dist > 10) return;
+
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(interactables);
+
+            if (intersects.length > 0) {
+                focusOnFlower(intersects[0].object.parentFlower);
+            }
+        });
+
+        function focusOnFlower(flower) {
+            isAnimatingCamera = true;
+            isModalOpen = true;
+            isPlanetRotating = false;
+            controls.enabled = false;
+            document.getElementById('hud').classList.add('opacity-0');
+
+            const data = flower.userData;
+            const originalScale = data.originalScale;
+
+            gsap.to(flower.scale, { 
+                x: originalScale.x * 1.3, y: originalScale.y * 1.3, z: originalScale.z * 1.3, 
+                duration: 0.6, ease: "back.out(1.5)" 
+            });
+            gsap.to(data.light, { intensity: 1.5, duration: 0.5 }); 
+
+            const flowerWorldPos = new THREE.Vector3();
+            flower.userData.flowerHead.getWorldPosition(flowerWorldPos);
+            
+            const normal = flowerWorldPos.clone().normalize();
+            const camOffset = isMobile ? 13 : 9;
+            
+            const camPos = flowerWorldPos.clone().add(normal.multiplyScalar(camOffset));
+            
+            gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 2, ease: "power2.inOut" });
+            gsap.to(controls.target, { x: flowerWorldPos.x, y: flowerWorldPos.y, z: flowerWorldPos.z, duration: 2, ease: "power2.inOut",
+                onComplete: () => {
+                    document.getElementById('modal-title').innerText = data.title;
+                    document.getElementById('modal-text').innerText = data.text;
+                    const photoCont = document.getElementById('modal-photo-container');
+                    const photo = document.getElementById('modal-photo');
+                    
+                    if (data.type === 'photo' && data.img) {
+                        photo.src = data.img;
+                        photoCont.style.display = 'flex';
+                    } else {
+                        photoCont.style.display = 'none';
+                    }
+
+                    const modal = document.getElementById('message-modal');
+                    modal.classList.remove('hidden');
+                    setTimeout(() => {
+                        modal.classList.remove('opacity-0');
+                        document.getElementById('modal-content').classList.remove('translate-y-12');
+                    }, 50);
+                }
+            });
+        }
+
+        // --- 10. EVENTOS UI ---
+        document.getElementById('enter-btn').addEventListener('click', () => {
+            const bgMusic = document.getElementById('bg-music');
+            bgMusic.volume = 0.5;
+            bgMusic.play().catch(() => {});
+
+            const introScreen = document.getElementById('intro-screen');
+            introScreen.classList.add('opacity-0');
+            setTimeout(() => introScreen.style.display = 'none', 1000);
+
+            setMainView(4.0);
+            setTimeout(() => document.getElementById('hud').classList.remove('opacity-0'), 4000);
+        });
+
+        document.getElementById('close-modal-btn').addEventListener('click', () => {
+            const modal = document.getElementById('message-modal');
+            modal.classList.add('opacity-0');
+            document.getElementById('modal-content').classList.add('translate-y-12');
+            
+            interactables.forEach(hitbox => {
+                const f = hitbox.parentFlower;
+                gsap.to(f.scale, {x: f.userData.originalScale.x, y: f.userData.originalScale.y, z: f.userData.originalScale.z, duration: 0.5});
+                gsap.to(f.userData.light, {intensity: f.userData.type === 'final' ? 0.8 : 0.2, duration: 0.5});
+            });
+
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                isModalOpen = false;
+                setMainView(2.0); // Retorna a la vista ampliada y respirable
+                document.getElementById('hud').classList.remove('opacity-0');
+            }, 600);
+        });
+
+        window.onload = () => {
+            setTimeout(() => {
+                const introPanel = document.getElementById('intro-panel');
+                introPanel.classList.remove('opacity-0', 'translate-y-10');
+            }, 500);
+        };
+
+        // --- 11. LOOP DE RENDER ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            backgroundGroup.rotation.y = time * 0.003;
+            moonGroup.rotation.y = time * 0.15;
+            moonGroup.rotation.z = Math.sin(time * 0.1) * 0.15;
+
+            if(isPlanetRotating) {
+                planetGroup.rotation.y += 0.0015;
+                planetGroup.rotation.z = Math.sin(time * 0.2) * 0.02;
+            }
+
+            particles.material.opacity = 0.3 + Math.sin(time * 1.5) * 0.2;
+
+            controls.update();
+            composer.render();
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth; const height = window.innerHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+            composer.setSize(width, height);
+            
+            if(!isModalOpen && !isAnimatingCamera) {
+                const isMobileNow = width <= 768;
+                camera.position.setLength(isMobileNow ? 44 : 34); // Sincronizado con setMainView
+                controls.minDistance = isMobileNow ? 25 : 20;
+            }
+        });
+    </script>
+</body>
+</html>
